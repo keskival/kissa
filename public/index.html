@@ -1,0 +1,152 @@
+<html>
+<head>
+</head>
+<body>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script> 
+<script>
+  window.fbAsyncInit = function() {
+    FB.init({
+      appId            : '174781145893917',
+      autoLogAppEvents : true,
+      xfbml            : true,
+      version          : 'v2.10'
+    });
+    FB.AppEvents.logPageView();
+  };
+
+  (function(d, s, id){
+     var js, fjs = d.getElementsByTagName(s)[0];
+     if (d.getElementById(id)) {return;}
+     js = d.createElement(s); js.id = id;
+     js.src = "https://connect.facebook.net/en_US/sdk.js";
+     fjs.parentNode.insertBefore(js, fjs);
+   }(document, 'script', 'facebook-jssdk'));
+</script>
+<script>
+const tagToFind="Luna";
+
+let albumsList = [];
+let photosList = [];
+let photosHandled = 0;
+let photosFound = 0;
+
+function log(message) {
+    $("#status").html((i, origText) => {
+        return origText + "\n</br>" + JSON.stringify(message);
+    });
+}
+
+function handlePhoto2(photo, url) {
+    $("#container").html((i, origHtml) => {
+        return origHtml + "\n</br>" +
+            "<a href=\"https://www.facebook.com/photo.php?fbid="+ photo.id + "\">" +
+            "<img src=\"" + url + "\"/>" +
+            "</a>";
+    });
+}
+
+function handlePhoto(photo) {
+    fbApi("/" + photo.id + "/picture", response => {
+        handlePhoto2(photo, response.data.url);
+    });
+}
+
+function fbApi2(path, handler) {
+    FB.api(path, response => {
+        if (response && response.error && response.error.is_transient) {
+            console.log("Got transient error: " + JSON.stringify(response));
+            setTimeout(() => {fbApi(path, handler)}, 5*60000);
+        } else {
+            handler(response);
+        }
+    });
+}
+
+let requests = [];
+
+setInterval(function() {
+    if(requests.length > 0) {
+        var request = requests.pop();
+        if(typeof request === "function") {
+            request();
+        }
+    }
+}, 100);
+
+function fbApi(path, handler) {
+    requests.push(function() {
+        fbApi2(path, handler);
+    });
+};
+
+function handlePhotosResponse(response) {
+    let photos = response.data;
+    photos.forEach(photo => {
+        fbApi("/" + photo.id + "/tags", response => {
+            const tags = response.data;
+            if (tags && $.inArray(tagToFind, tags.map(t => t.name)) >= 0) {
+                console.log("Tag: " + photo.id + ", tags: " + JSON.stringify(tags));
+                photosList.push(photo);
+                photosFound = photosFound + 1;
+                $("#photosFound").html("Photos found: " + photosFound + ": " + JSON.stringify(photosList));
+                handlePhoto(photo);
+            }
+            photosHandled = photosHandled + 1;
+            $("#photosHandled").html("Photos handled: " + photosHandled);
+        });
+    });
+    if (response.paging && response.paging.next) {
+        setTimeout( () => fbApi(response.paging.next, handlePhotosResponse), 100);
+    }
+}
+
+function allAlbumsLoaded() {
+    albumsList.forEach(album => {
+        fbApi("/" + album.id + "/photos", handlePhotosResponse);
+    });
+}
+
+function handleAlbumResponse(response) {
+    let albums = response.data;
+    albumsList = albumsList.concat(albums);
+    if (response.paging && response.paging.next) {
+        fbApi(response.paging.next, handleAlbumResponse);
+    } else {
+        allAlbumsLoaded();
+    }
+}
+
+function load() {
+    console.log("Load");
+    fbApi("/me/albums", handleAlbumResponse);
+    // Get an album page.
+    // Iterate over album pages.
+    // For each album, get photo pages.
+    // Iterate over photo pages.
+    // Get tags for each photo.
+    // Handle images with the tag "Luna".
+}
+
+function loginAndLoad() {
+    FB.login(function(response){
+        load();
+    });
+}
+
+$(document).ready(function(){
+    console.log("Ready");
+    $("#load").click( () => {
+        console.log("Clicked");
+        loginAndLoad();
+    });
+});
+</script>
+<a id="load">Load data</a>
+<p id="photosHandled"></p>
+<p id="photosFound"></p>
+<div id="status"></div>
+<div id="container"></div>
+
+</body>
+
+</html>
